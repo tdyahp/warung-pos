@@ -49,10 +49,9 @@
     .catalog-actions { display: flex; gap: 6px; justify-content: flex-end; }
     .btn-sm { width: auto; padding: 6px 12px; font-size: 13px; margin: 0; }
 
-    .cart-box { background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 10px; max-height: 250px; overflow-y: auto; margin-bottom: 10px; }
+    .cart-box { background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 10px; max-height: 220px; overflow-y: auto; margin-bottom: 10px; }
     .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
-    .qty-input { width: 65px !important; padding: 6px !important; margin: 0 !important; font-size: 16px !important; text-align: center; font-weight: bold; }
-
+    
     .total-display { font-size: 22px; font-weight: bold; margin: 10px 0; color: #c0392b; }
 
     /* Cards untuk Dashboard Laporan */
@@ -78,7 +77,7 @@
 <body>
 
   <header>
-    <h1 id="app-title">Warung Bu Kuswadi</h1>
+    <h1 id="app-title">Warung POS</h1>
     <p>Sistem Kasir & Inventaris</p>
     <nav>
       <button class="nav-btn active" onclick="switchPage('kasir', event)">🛒 KASIR</button>
@@ -96,8 +95,8 @@
     </div>
     
     <div class="toggle-mode">
-      <button id="btn-ecer" class="active" onclick="setMode('Ecer')">Ecer</button>
-      <button id="btn-grosir" onclick="setMode('Grosir')">Grosir</button>
+      <button id="btn-ecer" class="active" onclick="setMode('ECER')">ECER</button>
+      <button id="btn-grosir" onclick="setMode('GROSIR')">GROSIR</button>
     </div>
 
     <div id="product-results" class="product-list"></div>
@@ -147,7 +146,10 @@
 
   <!-- HALAMAN LAPORAN -->
   <div id="laporan" class="page">
-    <h3>📈 Dashboard Laporan</h3>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0;">📈 Dashboard Laporan</h3>
+      <button onclick="loadReport()" style="background:#2980b9; color:#fff; width:auto; margin:0; padding:8px 12px; font-size:14px;">🔄 Sync Data</button>
+    </div>
     
     <div style="display:flex; gap:10px;">
       <select id="report-month" onchange="loadReport()">
@@ -216,15 +218,10 @@
     <button onclick="saveSettings()" style="background:#2980b9; color:#fff;">Simpan Pengaturan</button>
 
     <hr style="margin:20px 0;">
-    <h4>📥 Import / Export Data Produk & Transaksi</h4>
-    <p style="font-size:13px; color:#666;">Import data barang awal (.CSV dari Google Spreadsheet):</p>
+    <h4>📥 Import / Export Data Produk</h4>
+    <p style="font-size:13px; color:#666;">Pilih file .CSV dari Google Spreadsheet kamu untuk di-import:</p>
     <input type="file" id="csv-file" accept=".csv">
-    <button class="btn-sec" onclick="importCSV()">Import Data CSV Produk</button>
-    
-    <hr style="margin:20px 0;">
-    <p style="font-size:13px; color:#666;">Restore / Sinkronisasi Backup (.JSON antar HP):</p>
-    <input type="file" id="json-file" accept=".json">
-    <button style="background:#8e44ad; color:#fff;" onclick="importJSON()">Import Backup JSON Data</button>
+    <button class="btn-sec" onclick="importCSV()">Import Data CSV</button>
     <br><br>
     <button onclick="exportData()" style="background:#16a085; color:#fff;">📥 Export Backup Data (JSON)</button>
   </div>
@@ -244,8 +241,8 @@
       <input type="number" id="p-ecer" placeholder="0">
       <label style="font-size:13px;">Harga Grosir:</label>
       <input type="number" id="p-grosir" placeholder="0">
-      <label style="font-size:13px;">Stok Barang (Bisa Desimal):</label>
-      <input type="number" step="any" id="p-stock" placeholder="0">
+      <label style="font-size:13px;">Stok Barang:</label>
+      <input type="number" id="p-stock" placeholder="0">
       
       <button onclick="saveProductForm()" style="background:#27ae60; color:#fff;">Simpan Data</button>
       <button onclick="closeProductModal()" style="background:#7f8c8d; color:#fff;">Batal</button>
@@ -283,7 +280,7 @@
           <div>Kembali: <span id="r-change"></span></div>
         </div>
         <hr>
-        <p style="font-size:12px;">--- Terima Kasih ---<br>Semoga Berkah</p>
+        <p style="font-size:12px;">--- Terima Kasih ---<br>Barang yang sudah dibeli tidak dapat ditukar/dikembalikan</p>
       </div>
       <button onclick="window.print()" style="background:#27ae60; color:#fff;">Print</button>
       <button onclick="closeModal()" style="background:#7f8c8d; color:#fff;">Tutup</button>
@@ -354,7 +351,7 @@
     function addToCart(product) {
       const existing = cart.find(item => item.id === product.id);
       if (existing) {
-        existing.qty = Math.round((existing.qty + 1) * 100) / 100;
+        existing.qty += 1;
       } else {
         cart.push({ ...product, qty: 1 });
       }
@@ -367,42 +364,33 @@
       const container = document.getElementById('cart-list');
       container.innerHTML = '';
       
-      let totalTypes = cart.length;
+      let totalItems = 0;
       cart.forEach((item, index) => {
+        totalItems += item.qty;
         const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
         
         const div = document.createElement('div');
         div.className = 'cart-item';
         div.innerHTML = `
           <div><b>${item.nama}</b><br><small>@ Rp ${price.toLocaleString()}</small></div>
-          <div style="display:flex; align-items:center; gap:4px;">
-            <button onclick="updateQty(${index}, -0.5)" style="width:28px; padding:2px;">-</button>
-            <input type="number" step="any" class="qty-input" value="${item.qty}" oninput="manualQty(${index}, this.value)">
-            <button onclick="updateQty(${index}, 0.5)" style="width:28px; padding:2px;">+</button>
-            <button onclick="removeItem(${index})" style="background:#e74c3c; color:#fff; padding:2px 8px; margin-left:4px;">X</button>
+          <div style="display:flex; align-items:center; gap:5px;">
+            <button onclick="updateQty(${index}, -1)" style="width:30px; padding:2px;">-</button>
+            <span><b>${item.qty}</b></span>
+            <button onclick="updateQty(${index}, 1)" style="width:30px; padding:2px;">+</button>
+            <button onclick="removeItem(${index})" style="background:#e74c3c; color:#fff; padding:2px 8px; margin-left:5px;">X</button>
           </div>
         `;
         container.appendChild(div);
       });
 
-      document.getElementById('cart-item-count').innerText = `(${totalTypes} jenis)`;
+      document.getElementById('cart-item-count').innerText = `(${totalItems} item)`;
       calculateTotal();
     }
 
     function updateQty(index, change) {
-      cart[index].qty = Math.max(0, Math.round((cart[index].qty + change) * 100) / 100);
+      cart[index].qty += change;
       if (cart[index].qty <= 0) cart.splice(index, 1);
       renderCart();
-    }
-
-    function manualQty(index, val) {
-      const parsed = parseFloat(val.replace(',', '.'));
-      if (!isNaN(parsed) && parsed > 0) {
-        cart[index].qty = parsed;
-      } else if (val === '' || parsed <= 0) {
-        cart[index].qty = 0;
-      }
-      calculateTotal();
     }
 
     function removeItem(index) {
@@ -413,7 +401,7 @@
     function calculateTotal() {
       let subtotal = cart.reduce((sum, item) => {
         const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
-        return sum + (price * (item.qty || 0));
+        return sum + (price * item.qty);
       }, 0);
 
       const discount = Number(document.getElementById('discount-input').value) || 0;
@@ -421,8 +409,8 @@
       const pay = Number(document.getElementById('pay-input').value) || 0;
       const change = Math.max(0, pay - grandTotal);
 
-      document.getElementById('grand-total').innerText = `Rp ${Math.round(grandTotal).toLocaleString()}`;
-      document.getElementById('change-total').innerText = `Rp ${Math.round(change).toLocaleString()}`;
+      document.getElementById('grand-total').innerText = `Rp ${grandTotal.toLocaleString()}`;
+      document.getElementById('change-total').innerText = `Rp ${change.toLocaleString()}`;
     }
 
     // --- KATALOG (LOAD, EDIT & TAMBAH) ---
@@ -490,7 +478,7 @@
     }
 
     async function deleteProduct(id) {
-      if (confirm("Yakin ingin menghapus produk ini?")) {
+      if (confirm("Yakin ingin menghapus produk ini dari katalog?")) {
         await db.products.delete(id);
         loadCatalog();
       }
@@ -552,7 +540,7 @@
           <div style="background:#f8f9fa; border:1px solid #ddd; padding:10px; border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
             <div>
               <b>Draft jam ${h.waktu}</b><br>
-              <small>${h.items.length} jenis barang</small>
+              <small>${h.items.length} jenis barang (${h.items.reduce((a,b)=>a+b.qty,0)} pcs)</small>
             </div>
             <div>
               <button onclick="restoreDraft(${h.id})" style="background:#27ae60; color:#fff; padding:5px 10px; font-size:14px;">Buka</button>
@@ -599,8 +587,8 @@
         totalCost += ((item.hargaBeli || 0) * item.qty);
       });
 
-      const grandTotal = Math.round(subtotal - discount);
-      const profit = Math.round(grandTotal - totalCost);
+      const grandTotal = subtotal - discount;
+      const profit = grandTotal - totalCost;
       const pay = Number(document.getElementById('pay-input').value) || 0;
 
       if (pay < grandTotal) return alert("Nominal bayar masih kurang!");
@@ -616,7 +604,7 @@
       for (let item of cart) {
         const prod = await db.products.get(item.id);
         if (prod) {
-          const newStock = Math.max(0, Math.round((prod.stok - item.qty) * 100) / 100);
+          const newStock = Math.max(0, prod.stok - item.qty);
           await db.products.update(item.id, { stok: newStock });
         }
       }
@@ -632,7 +620,7 @@
       itemsContainer.innerHTML = '';
       cart.forEach(item => {
         const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
-        itemsContainer.innerHTML += `<div>${item.nama} x${item.qty} <span style="float:right;">Rp ${Math.round(price * item.qty).toLocaleString()}</span></div>`;
+        itemsContainer.innerHTML += `<div>${item.nama} x${item.qty} <span style="float:right;">Rp ${(price * item.qty).toLocaleString()}</span></div>`;
       });
 
       const discountRow = document.getElementById('r-discount-row');
@@ -659,7 +647,7 @@
       document.getElementById('receipt-modal').style.display = 'none';
     }
 
-    // --- RIWAYAT PENJUALAN ---
+    // --- RIWAYAT PENJUALAN (DISERTAI HAPUS TRANSAKSI & STOK BALIK AUTO) ---
     async function loadHistory() {
       const history = await db.transactions.toArray();
       const filterDate = document.getElementById('history-date-filter').value;
@@ -682,8 +670,12 @@
 
       container.innerHTML = filteredHistory.map(h => `
         <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid #ccc; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-          <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
-            <b>${h.noTrx}</b> <span>${h.waktu}</span>
+          <div style="display:flex; justify-content:space-between; font-size:13px; color:#666; align-items:center;">
+            <b>${h.noTrx}</b>
+            <div>
+              <span>${h.waktu}</span>
+              <button onclick="deleteTransaction(${h.id})" style="background:#e74c3c; color:#fff; border:none; padding:3px 8px; font-size:12px; border-radius:4px; margin-left:6px; margin-bottom:0;">🗑️ Hapus</button>
+            </div>
           </div>
           <hr style="border:none; border-top:1px dashed #eee; margin:6px 0;">
           <div style="font-size:14px; margin-bottom:6px;">
@@ -698,13 +690,33 @@
       `).join('');
     }
 
+    async function deleteTransaction(id) {
+      if (confirm("Yakin ingin menghapus transaksi ini? Stok barang yang dibeli akan dikembalikan otomatis ke Katalog.")) {
+        const trx = await db.transactions.get(id);
+        if (trx && trx.items) {
+          // Pengembalian Stok Otomatis
+          for (let item of trx.items) {
+            const prod = await db.products.get(item.id);
+            if (prod) {
+              await db.products.update(item.id, { stok: prod.stok + item.qty });
+            }
+          }
+        }
+        await db.transactions.delete(id);
+        allProducts = await db.products.toArray();
+        alert("Transaksi berhasil dihapus dan stok barang telah dikembalikan!");
+        loadHistory();
+      }
+    }
+
     function resetHistoryFilter() {
       document.getElementById('history-date-filter').value = '';
       loadHistory();
     }
 
-    // --- DASHBOARD LAPORAN ---
+    // --- DASHBOARD LAPORAN (DENGAN SYNC) ---
     async function loadReport() {
+      allProducts = await db.products.toArray();
       const allTrx = await db.transactions.toArray();
       const selectedMonth = document.getElementById('report-month').value;
       const selectedYear = Number(document.getElementById('report-year').value);
@@ -756,7 +768,7 @@
         </div>
       `).join('') : '<div style="color:#27ae60;">Stok semua barang aman!</div>';
 
-      // Top 10 Barang Terlaris (Qty)
+      // 1. Top 10 Barang Terlaris (Qty)
       const sortedByQty = Object.keys(productSales).map(k => ({ nama: k, qty: productSales[k] }))
         .sort((a, b) => b.qty - a.qty).slice(0, 10);
 
@@ -767,14 +779,14 @@
         </div>
       `).join('') : '<div>Belum ada penjualan.</div>';
 
-      // Top 10 Profit Tertinggi
+      // 2. Top 10 Profit Tertinggi (Ter-Cuan)
       const sortedByProfit = Object.keys(productProfits).map(k => ({ nama: k, profit: productProfits[k] }))
         .sort((a, b) => b.profit - a.profit).slice(0, 10);
 
       const topProfitContainer = document.getElementById('top-profit-list');
       topProfitContainer.innerHTML = sortedByProfit.length ? sortedByProfit.map((p, idx) => `
         <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee;">
-          <span>${idx + 1}. ${p.nama}</span> <b style="color:#27ae60;">+Rp ${Math.round(p.profit).toLocaleString()}</b>
+          <span>${idx + 1}. ${p.nama}</span> <b style="color:#27ae60;">+Rp ${p.profit.toLocaleString()}</b>
         </div>
       `).join('') : '<div>Belum ada data profit.</div>';
     }
@@ -808,31 +820,6 @@
         await db.products.bulkAdd(products);
         allProducts = await db.products.toArray();
         alert(`Berhasil meng-import ${products.length} barang!`);
-      };
-      reader.readAsText(fileInput.files[0]);
-    }
-
-    function importJSON() {
-      const fileInput = document.getElementById('json-file');
-      if (!fileInput.files[0]) return alert("Pilih file JSON dulu!");
-
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const data = JSON.parse(e.target.result);
-          if (data.products) {
-            await db.products.clear();
-            await db.products.bulkAdd(data.products);
-          }
-          if (data.transactions) {
-            await db.transactions.clear();
-            await db.transactions.bulkAdd(data.transactions);
-          }
-          allProducts = await db.products.toArray();
-          alert("Restore / Sinkronisasi data JSON berhasil!");
-        } catch (err) {
-          alert("File JSON tidak valid!");
-        }
       };
       reader.readAsText(fileInput.files[0]);
     }
