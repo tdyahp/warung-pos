@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Warung POS</title>
+  <!-- Library Dexie.js untuk Database Offline -->
+  <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+  <!-- Manifest untuk PWA -->
+  <link rel="manifest" href="manifest.json">
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { margin: 0; background-color: #f4f6f9; font-size: 16px; color: #111; }
+    
+    /* Header Navigasi */
+    header { background: #fff; padding: 10px; border-bottom: 2px solid #ddd; text-align: center; }
+    header h1 { margin: 0; font-size: 22px; color: #2c3e50; }
+    header p { margin: 2px 0 8px; font-size: 13px; color: #666; }
+    nav { display: flex; justify-content: space-around; background: #fff; padding: 5px 0; overflow-x: auto; }
+    .nav-btn { background: none; border: none; font-size: 14px; font-weight: bold; padding: 8px 10px; cursor: pointer; color: #555; white-space: nowrap; }
+    .nav-btn.active { color: #000; border-bottom: 3px solid #3498db; background: #e8f4fc; border-radius: 6px; }
+
+    /* Layout Konten */
+    .page { display: none; padding: 12px; max-width: 600px; margin: 0 auto; }
+    .page.active { display: block; }
+    
+    /* Input & Tombol Ramah Lansia */
+    input, select, button { font-size: 18px; padding: 12px; border-radius: 8px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; }
+    button { cursor: pointer; font-weight: bold; }
+    .btn-main { background: #27ae60; color: #fff; border: none; font-size: 20px; padding: 15px; }
+    .btn-sec { background: #f39c12; color: #fff; border: none; }
+    
+    /* Kasir UI */
+    .search-group { display: flex; gap: 8px; }
+    .toggle-mode { display: flex; background: #eee; border-radius: 8px; padding: 3px; margin-bottom: 10px; }
+    .toggle-mode button { margin: 0; border: none; background: none; font-size: 16px; font-weight: bold; border-radius: 6px; }
+    .toggle-mode button.active { background: #f1c40f; color: #000; }
+    
+    .product-list { max-height: 200px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; }
+    .product-item { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; cursor: pointer; font-weight: bold; }
+    
+    .cart-box { background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 10px; max-height: 200px; overflow-y: auto; margin-bottom: 10px; }
+    .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
+    
+    .total-display { font-size: 22px; font-weight: bold; margin: 10px 0; color: #c0392b; }
+
+    /* Cards untuk Dashboard Laporan */
+    .report-grid { display: flex; gap: 8px; margin-bottom: 15px; }
+    .report-card { flex: 1; padding: 12px; border-radius: 8px; color: #fff; text-align: center; }
+    .card-blue { background: #2980b9; }
+    .card-green { background: #27ae60; }
+    .card-cyan { background: #16a085; }
+    .report-card h4 { margin: 0; font-size: 13px; font-weight: normal; }
+    .report-card h2 { margin: 5px 0 0; font-size: 18px; }
+
+    /* Modal Pop-up */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 100; }
+    .modal-content { background: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px; text-align: center; max-height: 85vh; overflow-y: auto; }
+    
+    @media print {
+      body * { visibility: hidden; }
+      #printable-receipt, #printable-receipt * { visibility: visible; }
+      #printable-receipt { position: absolute; left: 0; top: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1 id="app-title">Warung POS</h1>
+    <p>Sistem Kasir & Inventaris</p>
+    <nav>
+      <button class="nav-btn active" onclick="switchPage('kasir', event)">🛒 KASIR</button>
+      <button class="nav-btn" onclick="switchPage('katalog', event)">📦 KATALOG</button>
+      <button class="nav-btn" onclick="switchPage('riwayat', event)">📜 RIWAYAT</button>
+      <button class="nav-btn" onclick="switchPage('laporan', event)">📈 LAPORAN</button>
+      <button class="nav-btn" onclick="switchPage('setting', event)">⚙️ SETTING</button>
+    </nav>
+  </header>
+
+  <!-- HALAMAN KASIR -->
+  <div id="kasir" class="page active">
+    <div class="search-group">
+      <input type="text" id="search-input" placeholder="Cari Nama / Kode Barang..." oninput="searchProduct()">
+    </div>
+    
+    <div class="toggle-mode">
+      <button id="btn-ecer" class="active" onclick="setMode('ECER')">ECER</button>
+      <button id="btn-grosir" onclick="setMode('GROSIR')">GROSIR</button>
+    </div>
+
+    <div id="product-results" class="product-list"></div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h3 style="margin:5px 0;">🛒 Keranjang <span id="cart-item-count" style="font-size:14px; font-weight:normal;">(0 item)</span></h3>
+      <div style="display:flex; gap:5px;">
+        <button class="btn-sec" style="padding:6px 10px; font-size:14px; margin-bottom:0;" onclick="holdCart()">⏸️ Tahan</button>
+        <button style="background:#8e44ad; color:#fff; padding:6px 10px; font-size:14px; margin-bottom:0; border:none;" onclick="openDraftModal()">📂 Draft</button>
+      </div>
+    </div>
+    
+    <div id="cart-list" class="cart-box"></div>
+
+    <div class="total-display">TOTAL: <span id="grand-total">Rp 0</span></div>
+
+    <input type="number" id="discount-input" placeholder="Diskon / Potongan (Rp) - Opsional" oninput="calculateTotal()">
+    <input type="number" id="pay-input" placeholder="Nominal Bayar (Rp)" oninput="calculateTotal()">
+    
+    <div class="total-display" style="color:#27ae60;">KEMBALIAN: <span id="change-total">Rp 0</span></div>
+
+    <button class="btn-main" onclick="processTransaction()">Proses & Cetak Struk</button>
+  </div>
+
+  <!-- HALAMAN KATALOG -->
+  <div id="katalog" class="page">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0;">📦 Katalog Produk</h3>
+      <button style="background:#27ae60; color:#fff; width:auto; margin:0; padding:8px 12px; font-size:14px;" onclick="openAddProductModal()">➕ Tambah Produk</button>
+    </div>
+    <input type="text" id="catalog-search" placeholder="Cari produk di katalog..." oninput="loadCatalog()">
+    <div id="catalog-list" class="product-list" style="max-height:400px;"></div>
+  </div>
+
+  <!-- HALAMAN RIWAYAT -->
+  <div id="riwayat" class="page">
+    <h3>📜 Riwayat Penjualan</h3>
+    
+    <!-- Filter Tanggal & Bulan -->
+    <div style="background:#fff; padding:10px; border-radius:8px; border:1px solid #ccc; margin-bottom:15px;">
+      <label style="font-size:13px; font-weight:bold;">Filter Berdasarkan Tanggal/Bulan:</label>
+      <input type="date" id="history-date-filter" onchange="loadHistory()" style="margin-top:5px;">
+      <button onclick="resetHistoryFilter()" style="background:#95a5a6; color:#fff; padding:6px; font-size:13px; margin-bottom:0;">Reset Filter Tanggal</button>
+    </div>
+
+    <div id="history-list"></div>
+  </div>
+
+  <!-- HALAMAN LAPORAN (DASHBOARD) -->
+  <div id="laporan" class="page">
+    <h3>📈 Dashboard Laporan</h3>
+    
+    <!-- Filter Bulan & Tahun -->
+    <div style="display:flex; gap:10px;">
+      <select id="report-month" onchange="loadReport()">
+        <option value="ALL">Semua Bulan</option>
+        <option value="0">Januari</option>
+        <option value="1">Februari</option>
+        <option value="2">Maret</option>
+        <option value="3">April</option>
+        <option value="4">Mei</option>
+        <option value="5">Juni</option>
+        <option value="6">Juli</option>
+        <option value="7">Agustus</option>
+        <option value="8">September</option>
+        <option value="9">Oktober</option>
+        <option value="10">November</option>
+        <option value="11">Desember</option>
+      </select>
+      <select id="report-year" onchange="loadReport()">
+        <option value="2026">2026</option>
+        <option value="2025">2025</option>
+      </select>
+    </div>
+
+    <!-- Ringkasan Omset & Profit -->
+    <div class="report-grid">
+      <div class="report-card card-blue">
+        <h4>Omset Hari Ini</h4>
+        <h2 id="rep-omset-today">Rp 0</h2>
+      </div>
+      <div class="report-card card-green">
+        <h4>Profit Hari Ini</h4>
+        <h2 id="rep-profit-today">Rp 0</h2>
+      </div>
+      <div class="report-card card-cyan">
+        <h4>Total Omset (Periode)</h4>
+        <h2 id="rep-omset-period">Rp 0</h2>
+      </div>
+    </div>
+
+    <!-- Peringatan Stok Menipis -->
+    <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid #ffc107; margin-bottom:15px;">
+      <h4 style="margin:0 0 8px; color:#d35400;">⚠️ Peringatan Stok Menipis (< 10)</h4>
+      <div id="low-stock-list" style="max-height:120px; overflow-y:auto; font-size:14px;"></div>
+    </div>
+
+    <!-- Top Produk Terlaris & Profit Tertinggi -->
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid #ccc;">
+        <h4 style="margin:0 0 8px; color:#2980b9;">🏆 Barang Terlaris (Top 10 Penjualan)</h4>
+        <div id="top-products-list" style="font-size:14px;"></div>
+      </div>
+
+      <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid #ccc;">
+        <h4 style="margin:0 0 8px; color:#27ae60;">💎 Barang Profit Tertinggi (Top 10 Ter-Cuan)</h4>
+        <div id="top-profit-list" style="font-size:14px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HALAMAN SETTING -->
+  <div id="setting" class="page">
+    <h3>⚙️ Pengaturan & Data</h3>
+    <label><b>Nama Toko:</b></label>
+    <input type="text" id="shop-name" value="WARUNG POS">
+    <label><b>Alamat Toko:</b></label>
+    <input type="text" id="shop-address" value="Jl. Contoh No. 123">
+    <label><b>No. Telepon:</b></label>
+    <input type="text" id="shop-phone" value="0812-3456-7890">
+    <button onclick="saveSettings()" style="background:#2980b9; color:#fff;">Simpan Pengaturan</button>
+
+    <hr style="margin:20px 0;">
+    <h4>📥 Import / Export Data Produk</h4>
+    <p style="font-size:13px; color:#666;">Pilih file .CSV dari Google Spreadsheet kamu untuk di-import:</p>
+    <input type="file" id="csv-file" accept=".csv">
+    <button class="btn-sec" onclick="importCSV()">Import Data CSV</button>
+    <br><br>
+    <button onclick="exportData()" style="background:#16a085; color:#fff;">📥 Export Backup Data (JSON)</button>
+  </div>
+
+  <!-- MODAL TAMBAH PRODUK BARU -->
+  <div id="add-product-modal" class="modal">
+    <div class="modal-content" style="text-align:left;">
+      <h3 style="margin-top:0; text-align:center;">➕ Tambah Produk Baru</h3>
+      <label style="font-size:13px;">Kode Produk (Opsional):</label>
+      <input type="text" id="p-code" placeholder="Misal: SE001">
+      <label style="font-size:13px;">Nama Produk:</label>
+      <input type="text" id="p-name" placeholder="Nama Barang">
+      <label style="font-size:13px;">Harga Beli (Modal):</label>
+      <input type="number" id="p-cost" placeholder="0">
+      <label style="font-size:13px;">Harga Ecer:</label>
+      <input type="number" id="p-ecer" placeholder="0">
+      <label style="font-size:13px;">Harga Grosir:</label>
+      <input type="number" id="p-grosir" placeholder="0">
+      <label style="font-size:13px;">Stok Awal:</label>
+      <input type="number" id="p-stock" placeholder="0">
+      
+      <button onclick="saveNewProduct()" style="background:#27ae60; color:#fff;">Simpan Produk</button>
+      <button onclick="closeAddProductModal()" style="background:#7f8c8d; color:#fff;">Batal</button>
+    </div>
+  </div>
+
+  <!-- MODAL DRAFT (TRANSAKSI DITAHAN) -->
+  <div id="draft-modal" class="modal">
+    <div class="modal-content">
+      <h3>📂 Daftar Transaksi Ditahan</h3>
+      <div id="draft-list" style="text-align:left; max-height:250px; overflow-y:auto; margin-bottom:15px;"></div>
+      <button onclick="closeDraftModal()" style="background:#7f8c8d; color:#fff;">Tutup</button>
+    </div>
+  </div>
+
+  <!-- MODAL STRUK -->
+  <div id="receipt-modal" class="modal">
+    <div class="modal-content">
+      <div id="printable-receipt">
+        <h2 id="r-shop-name" style="margin:0;">WARUNG POS</h2>
+        <p id="r-shop-address" style="margin:0; font-size:12px;"></p>
+        <p id="r-shop-phone" style="margin:0; font-size:12px;"></p>
+        <hr>
+        <div style="text-align:left; font-size:12px;">
+          <div>No: <span id="r-trx-id"></span></div>
+          <div>Waktu: <span id="r-date"></span></div>
+        </div>
+        <hr>
+        <div id="r-items" style="text-align:left; font-size:14px;"></div>
+        <hr>
+        <div style="text-align:right; font-size:14px;">
+          <div id="r-discount-row" style="display:none;">Diskon: -<span id="r-discount"></span></div>
+          <div><b>TOTAL: <span id="r-total"></span></b></div>
+          <div>Bayar: <span id="r-pay"></span></div>
+          <div>Kembali: <span id="r-change"></span></div>
+        </div>
+        <hr>
+        <p style="font-size:12px;">--- Terima Kasih ---<br>Barang yang sudah dibeli tidak dapat ditukar/dikembalikan</p>
+      </div>
+      <button onclick="window.print()" style="background:#27ae60; color:#fff;">Print</button>
+      <button onclick="closeModal()" style="background:#7f8c8d; color:#fff;">Tutup</button>
+    </div>
+  </div>
+
+  <script>
+    // 1. Inisialisasi Database Dexie.js
+    const db = new Dexie("WarungPOSDB");
+    db.version(1).stores({
+      products: "++id, kode, nama, hargaEcer, hargaGrosir, hargaBeli, stok",
+      transactions: "++id, noTrx, waktu, timestamp, total, profit, diskon, bayar, kembali",
+      holds: "++id, timestamp",
+      settings: "id"
+    });
+
+    let currentMode = 'ECER';
+    let cart = [];
+    let allProducts = [];
+
+    window.onload = async () => {
+      allProducts = await db.products.toArray();
+      loadSettings();
+      document.getElementById('report-month').value = new Date().getMonth().toString();
+    };
+
+    function switchPage(pageId, evt) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(pageId).classList.add('active');
+      if(evt) evt.target.classList.add('active');
+      
+      if(pageId === 'katalog') loadCatalog();
+      if(pageId === 'riwayat') loadHistory();
+      if(pageId === 'laporan') loadReport();
+    }
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById('btn-ecer').classList.toggle('active', mode === 'ECER');
+      document.getElementById('btn-grosir').classList.toggle('active', mode === 'GROSIR');
+      renderCart();
+    }
+
+    async function searchProduct() {
+      const query = document.getElementById('search-input').value.toLowerCase().trim();
+      const resultsContainer = document.getElementById('product-results');
+      resultsContainer.innerHTML = '';
+
+      if (!query) return;
+
+      const words = query.split(' ');
+      const matched = allProducts.filter(p => {
+        const text = (p.nama + ' ' + (p.kode || '')).toLowerCase();
+        return words.every(word => text.includes(word));
+      }).slice(0, 10);
+
+      matched.forEach(p => {
+        const price = currentMode === 'ECER' ? p.hargaEcer : p.hargaGrosir;
+        const div = document.createElement('div');
+        div.className = 'product-item';
+        div.innerHTML = `<span>${p.nama} (Stok: ${p.stok})</span> <span>Rp ${price.toLocaleString()}</span>`;
+        div.onclick = () => addToCart(p);
+        resultsContainer.appendChild(div);
+      });
+    }
+
+    function addToCart(product) {
+      const existing = cart.find(item => item.id === product.id);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        cart.push({ ...product, qty: 1 });
+      }
+      document.getElementById('search-input').value = '';
+      document.getElementById('product-results').innerHTML = '';
+      renderCart();
+    }
+
+    function renderCart() {
+      const container = document.getElementById('cart-list');
+      container.innerHTML = '';
+      
+      let totalItems = 0;
+      cart.forEach((item, index) => {
+        totalItems += item.qty;
+        const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
+        
+        const div = document.createElement('div');
+        div.className = 'cart-item';
+        div.innerHTML = `
+          <div><b>${item.nama}</b><br><small>@ Rp ${price.toLocaleString()}</small></div>
+          <div style="display:flex; align-items:center; gap:5px;">
+            <button onclick="updateQty(${index}, -1)" style="width:30px; padding:2px;">-</button>
+            <span><b>${item.qty}</b></span>
+            <button onclick="updateQty(${index}, 1)" style="width:30px; padding:2px;">+</button>
+            <button onclick="removeItem(${index})" style="background:#e74c3c; color:#fff; padding:2px 8px; margin-left:5px;">X</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+
+      document.getElementById('cart-item-count').innerText = `(${totalItems} item)`;
+      calculateTotal();
+    }
+
+    function updateQty(index, change) {
+      cart[index].qty += change;
+      if (cart[index].qty <= 0) cart.splice(index, 1);
+      renderCart();
+    }
+
+    function removeItem(index) {
+      cart.splice(index, 1);
+      renderCart();
+    }
+
+    function calculateTotal() {
+      let subtotal = cart.reduce((sum, item) => {
+        const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
+        return sum + (price * item.qty);
+      }, 0);
+
+      const discount = Number(document.getElementById('discount-input').value) || 0;
+      const grandTotal = Math.max(0, subtotal - discount);
+      const pay = Number(document.getElementById('pay-input').value) || 0;
+      const change = Math.max(0, pay - grandTotal);
+
+      document.getElementById('grand-total').innerText = `Rp ${grandTotal.toLocaleString()}`;
+      document.getElementById('change-total').innerText = `Rp ${change.toLocaleString()}`;
+    }
+
+    // --- TAMBAH PRODUK BARU (KATALOG) ---
+    function openAddProductModal() {
+      document.getElementById('add-product-modal').style.display = 'flex';
+    }
+
+    function closeAddProductModal() {
+      document.getElementById('add-product-modal').style.display = 'none';
+    }
+
+    async function saveNewProduct() {
+      const name = document.getElementById('p-name').value.trim();
+      if (!name) return alert("Nama Produk tidak boleh kosong!");
+
+      await db.products.add({
+        kode: document.getElementById('p-code').value.trim() || 'PROD' + Date.now().toString().slice(-4),
+        nama: name,
+        hargaBeli: Number(document.getElementById('p-cost').value) || 0,
+        hargaEcer: Number(document.getElementById('p-ecer').value) || 0,
+        hargaGrosir: Number(document.getElementById('p-grosir').value) || 0,
+        stok: Number(document.getElementById('p-stock').value) || 0
+      });
+
+      allProducts = await db.products.toArray();
+      alert("Produk berhasil ditambahkan!");
+      
+      document.getElementById('p-code').value = '';
+      document.getElementById('p-name').value = '';
+      document.getElementById('p-cost').value = '';
+      document.getElementById('p-ecer').value = '';
+      document.getElementById('p-grosir').value = '';
+      document.getElementById('p-stock').value = '';
+
+      closeAddProductModal();
+      loadCatalog();
+    }
+
+    // --- FITUR DRAFT & TAHAN ---
+    async function holdCart() {
+      if (cart.length === 0) return alert("Keranjang masih kosong!");
+      const now = new Date();
+      await db.holds.add({
+        timestamp: now.getTime(),
+        waktu: now.toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' }),
+        items: cart,
+        mode: currentMode,
+        diskon: document.getElementById('discount-input').value
+      });
+
+      cart = [];
+      document.getElementById('discount-input').value = '';
+      document.getElementById('pay-input').value = '';
+      renderCart();
+      alert("Transaksi berhasil ditahan ke Draft!");
+    }
+
+    async function openDraftModal() {
+      const holds = await db.holds.toArray();
+      const container = document.getElementById('draft-list');
+      
+      if (holds.length === 0) {
+        container.innerHTML = "<p style='text-align:center;'>Tidak ada transaksi yang ditahan.</p>";
+      } else {
+        container.innerHTML = holds.map(h => `
+          <div style="background:#f8f9fa; border:1px solid #ddd; padding:10px; border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <b>Draft jam ${h.waktu}</b><br>
+              <small>${h.items.length} jenis barang (${h.items.reduce((a,b)=>a+b.qty,0)} pcs)</small>
+            </div>
+            <div>
+              <button onclick="restoreDraft(${h.id})" style="background:#27ae60; color:#fff; padding:5px 10px; font-size:14px;">Buka</button>
+              <button onclick="deleteDraft(${h.id})" style="background:#e74c3c; color:#fff; padding:5px 10px; font-size:14px;">Hapus</button>
+            </div>
+          </div>
+        `).join('');
+      }
+      document.getElementById('draft-modal').style.display = 'flex';
+    }
+
+    async function restoreDraft(id) {
+      const h = await db.holds.get(id);
+      if (h) {
+        cart = h.items;
+        setMode(h.mode || 'ECER');
+        document.getElementById('discount-input').value = h.diskon || '';
+        renderCart();
+        await db.holds.delete(id);
+        closeDraftModal();
+      }
+    }
+
+    async function deleteDraft(id) {
+      await db.holds.delete(id);
+      openDraftModal();
+    }
+
+    function closeDraftModal() {
+      document.getElementById('draft-modal').style.display = 'none';
+    }
+
+    // --- PROSES TRANSAKSI ---
+    async function processTransaction() {
+      if (cart.length === 0) return alert("Keranjang masih kosong!");
+      
+      const discount = Number(document.getElementById('discount-input').value) || 0;
+      let subtotal = 0;
+      let totalCost = 0;
+
+      cart.forEach(item => {
+        const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
+        subtotal += (price * item.qty);
+        totalCost += ((item.hargaBeli || 0) * item.qty);
+      });
+
+      const grandTotal = subtotal - discount;
+      const profit = grandTotal - totalCost;
+      const pay = Number(document.getElementById('pay-input').value) || 0;
+
+      if (pay < grandTotal) return alert("Nominal bayar masih kurang!");
+
+      const noTrx = "TRX" + Date.now().toString().slice(-6);
+      const now = new Date();
+      const waktu = now.toLocaleString("id-ID");
+
+      await db.transactions.add({
+        noTrx, waktu, timestamp: now.getTime(), total: grandTotal, profit: profit, diskon: discount, bayar: pay, kembali: pay - grandTotal, items: cart
+      });
+
+      for (let item of cart) {
+        const prod = await db.products.get(item.id);
+        if (prod) {
+          const newStock = Math.max(0, prod.stok - item.qty);
+          await db.products.update(item.id, { stok: newStock });
+        }
+      }
+      allProducts = await db.products.toArray();
+
+      document.getElementById('r-shop-name').innerText = document.getElementById('shop-name').value;
+      document.getElementById('r-shop-address').innerText = document.getElementById('shop-address').value;
+      document.getElementById('r-shop-phone').innerText = document.getElementById('shop-phone').value;
+      document.getElementById('r-trx-id').innerText = noTrx;
+      document.getElementById('r-date').innerText = waktu;
+
+      const itemsContainer = document.getElementById('r-items');
+      itemsContainer.innerHTML = '';
+      cart.forEach(item => {
+        const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
+        itemsContainer.innerHTML += `<div>${item.nama} x${item.qty} <span style="float:right;">Rp ${(price * item.qty).toLocaleString()}</span></div>`;
+      });
+
+      const discountRow = document.getElementById('r-discount-row');
+      if (discount > 0) {
+        discountRow.style.display = 'block';
+        document.getElementById('r-discount').innerText = `Rp ${discount.toLocaleString()}`;
+      } else {
+        discountRow.style.display = 'none';
+      }
+
+      document.getElementById('r-total').innerText = `Rp ${grandTotal.toLocaleString()}`;
+      document.getElementById('r-pay').innerText = `Rp ${pay.toLocaleString()}`;
+      document.getElementById('r-change').innerText = `Rp ${(pay - grandTotal).toLocaleString()}`;
+
+      document.getElementById('receipt-modal').style.display = 'flex';
+
+      cart = [];
+      document.getElementById('discount-input').value = '';
+      document.getElementById('pay-input').value = '';
+      renderCart();
+    }
+
+    function closeModal() {
+      document.getElementById('receipt-modal').style.display = 'none';
+    }
+
+    // --- LOAD RIWAYAT PENJUALAN ---
+    async function loadHistory() {
+      const history = await db.transactions.toArray();
+      const filterDate = document.getElementById('history-date-filter').value;
+      const container = document.getElementById('history-list');
+
+      let filteredHistory = history.reverse();
+
+      if (filterDate) {
+        const selectedDateStr = new Date(filterDate).toLocaleDateString("id-ID");
+        filteredHistory = filteredHistory.filter(h => {
+          const hDateStr = new Date(h.timestamp || Date.now()).toLocaleDateString("id-ID");
+          return hDateStr === selectedDateStr;
+        });
+      }
+
+      if (filteredHistory.length === 0) {
+        container.innerHTML = "<p style='text-align:center;'>Tidak ada riwayat transaksi pada tanggal ini.</p>";
+        return;
+      }
+
+      container.innerHTML = filteredHistory.map(h => `
+        <div style="background:#fff; padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid #ccc;">
+          <div style="display:flex; justify-content:space-between; font-size:13px; color:#666;">
+            <b>${h.noTrx}</b> <span>${h.waktu}</span>
+          </div>
+          <hr style="border:none; border-top:1px dashed #eee; margin:5px 0;">
+          <div style="font-size:14px;">
+            ${(h.items || []).map(i => `<div>${i.nama} x${i.qty}</div>`).join('')}
+          </div>
+          <hr style="border:none; border-top:1px dashed #eee; margin:5px 0;">
+          <div style="display:flex; justify-content:space-between;">
+            <span>Total:</span> <b style="color:#27ae60;">Rp ${h.total.toLocaleString()}</b>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function resetHistoryFilter() {
+      document.getElementById('history-date-filter').value = '';
+      loadHistory();
+    }
+
+    // --- DASHBOARD LAPORAN ---
+    async function loadReport() {
+      const allTrx = await db.transactions.toArray();
+      const selectedMonth = document.getElementById('report-month').value;
+      const selectedYear = Number(document.getElementById('report-year').value);
+
+      let omsetToday = 0;
+      let profitToday = 0;
+      let omsetPeriod = 0;
+      
+      let productSales = {};
+      let productProfits = {};
+
+      allTrx.forEach(t => {
+        const tDate = new Date(t.timestamp || Date.now());
+        const isToday = new Date().toDateString() === tDate.toDateString();
+
+        if (isToday) {
+          omsetToday += t.total;
+          profitToday += (t.profit || 0);
+        }
+
+        const matchMonth = selectedMonth === 'ALL' || tDate.getMonth() === Number(selectedMonth);
+        const matchYear = tDate.getFullYear() === selectedYear;
+
+        if (matchMonth && matchYear) {
+          omsetPeriod += t.total;
+
+          if (t.items) {
+            t.items.forEach(item => {
+              const price = item.hargaEcer || item.hargaGrosir || 0;
+              const profitPerItem = (price - (item.hargaBeli || 0)) * item.qty;
+
+              productSales[item.nama] = (productSales[item.nama] || 0) + item.qty;
+              productProfits[item.nama] = (productProfits[item.nama] || 0) + profitPerItem;
+            });
+          }
+        }
+      });
+
+      document.getElementById('rep-omset-today').innerText = `Rp ${omsetToday.toLocaleString()}`;
+      document.getElementById('rep-profit-today').innerText = `Rp ${profitToday.toLocaleString()}`;
+      document.getElementById('rep-omset-period').innerText = `Rp ${omsetPeriod.toLocaleString()}`;
+
+      // Peringatan Stok Menipis (< 10)
+      const lowStockProducts = allProducts.filter(p => p.stok < 10);
+      const lowStockContainer = document.getElementById('low-stock-list');
+      lowStockContainer.innerHTML = lowStockProducts.length ? lowStockProducts.map(p => `
+        <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed #eee;">
+          <span>${p.nama}</span> <b style="color:#e74c3c;">Sisa ${p.stok}</b>
+        </div>
+      `).join('') : '<div style="color:#27ae60;">Stok semua barang aman!</div>';
+
+      // 1. Top 10 Barang Terlaris (Qty)
+      const sortedByQty = Object.keys(productSales).map(k => ({ nama: k, qty: productSales[k] }))
+        .sort((a, b) => b.qty - a.qty).slice(0, 10);
+
+      const topProductsContainer = document.getElementById('top-products-list');
+      topProductsContainer.innerHTML = sortedByQty.length ? sortedByQty.map((p, idx) => `
+        <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee;">
+          <span>${idx + 1}. ${p.nama}</span> <b>${p.qty} terjual</b>
+        </div>
+      `).join('') : '<div>Belum ada penjualan.</div>';
+
+      // 2. Top 10 Profit Tertinggi (Ter-Cuan)
+      const sortedByProfit = Object.keys(productProfits).map(k => ({ nama: k, profit: productProfits[k] }))
+        .sort((a, b) => b.profit - a.profit).slice(0, 10);
+
+      const topProfitContainer = document.getElementById('top-profit-list');
+      topProfitContainer.innerHTML = sortedByProfit.length ? sortedByProfit.map((p, idx) => `
+        <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee;">
+          <span>${idx + 1}. ${p.nama}</span> <b style="color:#27ae60;">+Rp ${p.profit.toLocaleString()}</b>
+        </div>
+      `).join('') : '<div>Belum ada data profit.</div>';
+    }
+
+    // --- IMPORT & EXPORT ---
+    function importCSV() {
+      const fileInput = document.getElementById('csv-file');
+      if (!fileInput.files[0]) return alert("Pilih file CSV dulu!");
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const text = e.target.result;
+        const lines = text.split('\n');
+        const products = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',');
+          if (cols.length >= 7) {
+            products.push({
+              kode: cols[0]?.trim(),
+              nama: cols[1]?.trim(),
+              hargaBeli: Number(cols[3]?.replace(/[^0-9]/g, '')) || 0,
+              hargaEcer: Number(cols[4]?.replace(/[^0-9]/g, '')) || 0,
+              hargaGrosir: Number(cols[5]?.replace(/[^0-9]/g, '')) || 0,
+              stok: Number(cols[6]?.replace(/[^0-9]/g, '')) || 0
+            });
+          }
+        }
+
+        await db.products.clear();
+        await db.products.bulkAdd(products);
+        allProducts = await db.products.toArray();
+        alert(`Berhasil meng-import ${products.length} barang!`);
+      };
+      reader.readAsText(fileInput.files[0]);
+    }
+
+    async function exportData() {
+      const products = await db.products.toArray();
+      const transactions = await db.transactions.toArray();
+      const backupData = { products, transactions };
+      
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `backup_warung_pos_${Date.now()}.json`;
+      a.click();
+    }
+
+    async function loadCatalog() {
+      const products = await db.products.toArray();
+      const query = (document.getElementById('catalog-search')?.value || '').toLowerCase();
+      const filtered = products.filter(p => p.nama.toLowerCase().includes(query));
+      
+      const container = document.getElementById('catalog-list');
+      container.innerHTML = filtered.map(p => `
+        <div class="product-item">
+          <div><b>${p.nama}</b> (${p.kode || '-'})<br><small>Stok: ${p.stok}</small></div>
+          <div>Ecer: Rp ${p.hargaEcer.toLocaleString()}</div>
+        </div>
+      `).join('');
+    }
+
+    async function saveSettings() {
+      await db.settings.put({
+        id: 1,
+        name: document.getElementById('shop-name').value,
+        address: document.getElementById('shop-address').value,
+        phone: document.getElementById('shop-phone').value
+      });
+      alert("Pengaturan disimpan!");
+    }
+
+    async function loadSettings() {
+      const s = await db.settings.get(1);
+      if (s) {
+        document.getElementById('shop-name').value = s.name;
+        document.getElementById('shop-address').value = s.address;
+        document.getElementById('shop-phone').value = s.phone;
+      }
+    }
+  </script>
+</body>
+</html>
