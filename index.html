@@ -49,7 +49,7 @@
     .catalog-actions { display: flex; gap: 6px; justify-content: flex-end; }
     .btn-sm { width: auto; padding: 6px 12px; font-size: 13px; margin: 0; }
 
-    .cart-box { background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 10px; max-height: 220px; overflow-y: auto; margin-bottom: 10px; }
+    .cart-box { background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 10px; max-height: 220px; overflow-y: auto; margin-bottom: 10px; scroll-behavior: smooth; }
     .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
     
     .total-display { font-size: 22px; font-weight: bold; margin: 10px 0; color: #c0392b; }
@@ -78,7 +78,7 @@
 
   <header>
     <h1 id="app-title">Warung Bu Kuswadi</h1>
-    <p>Sistem Kasir & Inventaris</p>
+    <p>Kasir & Inventaris</p>
     <nav>
       <button class="nav-btn active" onclick="switchPage('kasir', event)">🛒 KASIR</button>
       <button class="nav-btn" onclick="switchPage('katalog', event)">📦 KATALOG</button>
@@ -236,13 +236,13 @@
       <label style="font-size:13px;">Nama Produk:</label>
       <input type="text" id="p-name" placeholder="Nama Barang">
       <label style="font-size:13px;">Harga Beli (Modal):</label>
-      <input type="number" id="p-cost" placeholder="0">
+      <input type="number" id="p-cost" placeholder="0" step="any">
       <label style="font-size:13px;">Harga Ecer:</label>
-      <input type="number" id="p-ecer" placeholder="0">
+      <input type="number" id="p-ecer" placeholder="0" step="any">
       <label style="font-size:13px;">Harga Grosir:</label>
-      <input type="number" id="p-grosir" placeholder="0">
+      <input type="number" id="p-grosir" placeholder="0" step="any">
       <label style="font-size:13px;">Stok Barang:</label>
-      <input type="number" id="p-stock" placeholder="0">
+      <input type="number" id="p-stock" placeholder="0" step="any">
       
       <button onclick="saveProductForm()" style="background:#27ae60; color:#fff;">Simpan Data</button>
       <button onclick="closeProductModal()" style="background:#7f8c8d; color:#fff;">Batal</button>
@@ -280,7 +280,7 @@
           <div>Kembali: <span id="r-change"></span></div>
         </div>
         <hr>
-        <p style="font-size:12px;">--- Terima Kasih ---<br>Barang yang sudah dibeli tidak dapat ditukar/dikembalikan</p>
+        <p style="font-size:12px;">--- Terima Kasih ---<br>Semoga berkah. Silakan belanja kembali</p>
       </div>
       <button onclick="window.print()" style="background:#27ae60; color:#fff;">Print</button>
       <button onclick="closeModal()" style="background:#7f8c8d; color:#fff;">Tutup</button>
@@ -351,31 +351,46 @@
     function addToCart(product) {
       const existing = cart.find(item => item.id === product.id);
       if (existing) {
-        existing.qty += 1;
+        existing.qty = Math.round((existing.qty + 1) * 1000) / 1000;
       } else {
         cart.push({ ...product, qty: 1 });
       }
       document.getElementById('search-input').value = '';
       document.getElementById('product-results').innerHTML = '';
       renderCart();
+
+      // AUTO SCROLL KE BAWAH KERANJANG
+      const cartContainer = document.getElementById('cart-list');
+      setTimeout(() => {
+        cartContainer.scrollTop = cartContainer.scrollHeight;
+      }, 50);
     }
 
     function renderCart() {
       const container = document.getElementById('cart-list');
       container.innerHTML = '';
       
-      let totalItems = 0;
+      // CATATAN 3: MENGHITUNG DARI BANYAKNYA VARIASI PRODUK (BARIS ITEM)
+      const totalItemTypes = cart.length;
+
       cart.forEach((item, index) => {
-        totalItems += item.qty;
         const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
         
         const div = document.createElement('div');
         div.className = 'cart-item';
         div.innerHTML = `
-          <div><b>${item.nama}</b><br><small>@ Rp ${price.toLocaleString()}</small></div>
+          <div style="flex:1;">
+            <b>${item.nama}</b><br>
+            <small>@ Rp ${price.toLocaleString()}</small>
+          </div>
           <div style="display:flex; align-items:center; gap:5px;">
             <button onclick="updateQty(${index}, -1)" style="width:30px; padding:2px;">-</button>
-            <span><b>${item.qty}</b></span>
+            
+            <!-- CATATAN 1: INPUT BISA DESIMAL / PECAHAN -->
+            <input type="number" step="any" min="0" value="${item.qty}" 
+                   onchange="manualUpdateQty(${index}, this.value)" 
+                   style="width:65px; text-align:center; padding:4px; margin:0; font-weight:bold; font-size:15px;">
+                   
             <button onclick="updateQty(${index}, 1)" style="width:30px; padding:2px;">+</button>
             <button onclick="removeItem(${index})" style="background:#e74c3c; color:#fff; padding:2px 8px; margin-left:5px;">X</button>
           </div>
@@ -383,13 +398,28 @@
         container.appendChild(div);
       });
 
-      document.getElementById('cart-item-count').innerText = `(${totalItems} item)`;
+      document.getElementById('cart-item-count').innerText = `(${totalItemTypes} item)`;
       calculateTotal();
     }
 
     function updateQty(index, change) {
-      cart[index].qty += change;
-      if (cart[index].qty <= 0) cart.splice(index, 1);
+      let newQty = (cart[index].qty || 0) + change;
+      newQty = Math.round(newQty * 1000) / 1000; // Presisi desimal
+      if (newQty <= 0) {
+        cart.splice(index, 1);
+      } else {
+        cart[index].qty = newQty;
+      }
+      renderCart();
+    }
+
+    function manualUpdateQty(index, val) {
+      let parsed = parseFloat(val);
+      if (isNaN(parsed) || parsed <= 0) {
+        cart.splice(index, 1);
+      } else {
+        cart[index].qty = Math.round(parsed * 1000) / 1000;
+      }
       renderCart();
     }
 
@@ -409,8 +439,8 @@
       const pay = Number(document.getElementById('pay-input').value) || 0;
       const change = Math.max(0, pay - grandTotal);
 
-      document.getElementById('grand-total').innerText = `Rp ${grandTotal.toLocaleString()}`;
-      document.getElementById('change-total').innerText = `Rp ${change.toLocaleString()}`;
+      document.getElementById('grand-total').innerText = `Rp ${Math.round(grandTotal).toLocaleString()}`;
+      document.getElementById('change-total').innerText = `Rp ${Math.round(change).toLocaleString()}`;
     }
 
     // --- KATALOG (LOAD, EDIT & TAMBAH) ---
@@ -540,7 +570,7 @@
           <div style="background:#f8f9fa; border:1px solid #ddd; padding:10px; border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
             <div>
               <b>Draft jam ${h.waktu}</b><br>
-              <small>${h.items.length} jenis barang (${h.items.reduce((a,b)=>a+b.qty,0)} pcs)</small>
+              <small>${h.items.length} jenis barang</small>
             </div>
             <div>
               <button onclick="restoreDraft(${h.id})" style="background:#27ae60; color:#fff; padding:5px 10px; font-size:14px;">Buka</button>
@@ -587,7 +617,7 @@
         totalCost += ((item.hargaBeli || 0) * item.qty);
       });
 
-      const grandTotal = subtotal - discount;
+      const grandTotal = Math.max(0, subtotal - discount);
       const profit = grandTotal - totalCost;
       const pay = Number(document.getElementById('pay-input').value) || 0;
 
@@ -620,7 +650,7 @@
       itemsContainer.innerHTML = '';
       cart.forEach(item => {
         const price = currentMode === 'ECER' ? item.hargaEcer : item.hargaGrosir;
-        itemsContainer.innerHTML += `<div>${item.nama} x${item.qty} <span style="float:right;">Rp ${(price * item.qty).toLocaleString()}</span></div>`;
+        itemsContainer.innerHTML += `<div>${item.nama} x${item.qty} <span style="float:right;">Rp ${Math.round(price * item.qty).toLocaleString()}</span></div>`;
       });
 
       const discountRow = document.getElementById('r-discount-row');
@@ -631,9 +661,9 @@
         discountRow.style.display = 'none';
       }
 
-      document.getElementById('r-total').innerText = `Rp ${grandTotal.toLocaleString()}`;
+      document.getElementById('r-total').innerText = `Rp ${Math.round(grandTotal).toLocaleString()}`;
       document.getElementById('r-pay').innerText = `Rp ${pay.toLocaleString()}`;
-      document.getElementById('r-change').innerText = `Rp ${(pay - grandTotal).toLocaleString()}`;
+      document.getElementById('r-change').innerText = `Rp ${Math.round(pay - grandTotal).toLocaleString()}`;
 
       document.getElementById('receipt-modal').style.display = 'flex';
 
@@ -683,8 +713,8 @@
           </div>
           <hr style="border:none; border-top:1px dashed #eee; margin:6px 0;">
           <div style="display:flex; justify-content:space-between; font-size:14px;">
-            <span>Total: <b>Rp ${h.total.toLocaleString()}</b></span>
-            <span style="color:#27ae60;">Profit: <b>+Rp ${(h.profit || 0).toLocaleString()}</b></span>
+            <span>Total: <b>Rp ${Math.round(h.total).toLocaleString()}</b></span>
+            <span style="color:#27ae60;">Profit: <b>+Rp ${Math.round(h.profit || 0).toLocaleString()}</b></span>
           </div>
         </div>
       `).join('');
@@ -755,9 +785,9 @@
         }
       });
 
-      document.getElementById('rep-omset-today').innerText = `Rp ${omsetToday.toLocaleString()}`;
-      document.getElementById('rep-profit-today').innerText = `Rp ${profitToday.toLocaleString()}`;
-      document.getElementById('rep-omset-period').innerText = `Rp ${omsetPeriod.toLocaleString()}`;
+      document.getElementById('rep-omset-today').innerText = `Rp ${Math.round(omsetToday).toLocaleString()}`;
+      document.getElementById('rep-profit-today').innerText = `Rp ${Math.round(profitToday).toLocaleString()}`;
+      document.getElementById('rep-omset-period').innerText = `Rp ${Math.round(omsetPeriod).toLocaleString()}`;
 
       // Peringatan Stok Menipis (< 10)
       const lowStockProducts = allProducts.filter(p => p.stok < 10);
@@ -786,7 +816,7 @@
       const topProfitContainer = document.getElementById('top-profit-list');
       topProfitContainer.innerHTML = sortedByProfit.length ? sortedByProfit.map((p, idx) => `
         <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #eee;">
-          <span>${idx + 1}. ${p.nama}</span> <b style="color:#27ae60;">+Rp ${p.profit.toLocaleString()}</b>
+          <span>${idx + 1}. ${p.nama}</span> <b style="color:#27ae60;">+Rp ${Math.round(p.profit).toLocaleString()}</b>
         </div>
       `).join('') : '<div>Belum ada data profit.</div>';
     }
@@ -808,10 +838,10 @@
             products.push({
               kode: cols[0]?.trim(),
               nama: cols[1]?.trim(),
-              hargaBeli: Number(cols[3]?.replace(/[^0-9]/g, '')) || 0,
-              hargaEcer: Number(cols[4]?.replace(/[^0-9]/g, '')) || 0,
-              hargaGrosir: Number(cols[5]?.replace(/[^0-9]/g, '')) || 0,
-              stok: Number(cols[6]?.replace(/[^0-9]/g, '')) || 0
+              hargaBeli: Number(cols[3]?.replace(/[^0-9.]/g, '')) || 0,
+              hargaEcer: Number(cols[4]?.replace(/[^0-9.]/g, '')) || 0,
+              hargaGrosir: Number(cols[5]?.replace(/[^0-9.]/g, '')) || 0,
+              stok: Number(cols[6]?.replace(/[^0-9.]/g, '')) || 0
             });
           }
         }
