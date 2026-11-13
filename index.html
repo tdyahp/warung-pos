@@ -282,8 +282,7 @@
         <hr>
         <p style="font-size:12px;">--- Terima Kasih ---<br>Semoga berkah. Silakan belanja kembali</p>
       </div>
-      <button onclick="printViaRawBT()" style="background:#27ae60; color:#fff; padding:12px; font-size:16px;">🖨️ Cetak Struk (RawBT Bluetooth)</button>
-      <button onclick="window.print()" style="background:#3498db; color:#fff; padding:8px; font-size:12px;">Cetak Sistem Android</button>
+      <button onclick="window.print()" style="background:#27ae60; color:#fff;">Print</button>
       <button onclick="closeModal()" style="background:#7f8c8d; color:#fff;">Tutup</button>
     </div>
   </div>
@@ -885,57 +884,6 @@
         document.getElementById('shop-phone').value = s.phone;
       }
     }
-function printViaRawBT() {
-  const shopName = document.getElementById('shop-name').value || 'WARUNG POS';
-  const shopAddress = document.getElementById('shop-address').value || '';
-  const shopPhone = document.getElementById('shop-phone').value || '';
-  const noTrx = document.getElementById('r-trx-id').innerText;
-  const dateStr = document.getElementById('r-date').innerText;
-  const total = document.getElementById('r-total').innerText;
-  const pay = document.getElementById('r-pay').innerText;
-  const change = document.getElementById('r-change').innerText;
-
-  // Format Teks Struk untuk Printer Thermal (58mm / 32 karakter per baris)
-  let SOH = String.fromCharCode(1);
-  let text = "";
-  
-  // Header Struk
-  text += "\x1B\x61\x01"; // Rata tengah
-  text += "\x1B\x21\x20" + shopName + "\x1B\x21\x00\n"; // Bold / Besar
-  if (shopAddress) text += shopAddress + "\n";
-  if (shopPhone) text += "Telp: " + shopPhone + "\n";
-  text += "--------------------------------\n";
-  
-  // Info Transaksi
-  text += "\x1B\x61\x00"; // Rata kiri
-  text += "No   : " + noTrx + "\n";
-  text += "Tgl  : " + dateStr + "\n";
-  text += "--------------------------------\n";
-
-  // Item Keranjang (Ambil data dari modal r-items)
-  const itemsContainer = document.getElementById('r-items');
-  const itemRows = itemsContainer.querySelectorAll('div');
-  itemRows.forEach(row => {
-    text += row.innerText + "\n";
-  });
-
-  text += "--------------------------------\n";
-  
-  // Total & Bayar
-  text += "\x1B\x61\x02"; // Rata kanan
-  text += "TOTAL  : " + total + "\n";
-  text += "BAYAR  : " + pay + "\n";
-  text += "KEMBALI: " + change + "\n";
-  text += "--------------------------------\n";
-  
-  // Footer
-  text += "\x1B\x61\x01"; // Rata tengah
-  text += "Terima Kasih Atas Kunjungan Anda\n\n\n\n";
-
-  // Kirimkan teks ke Aplikasi RawBT via Web Intent
-  const intentUrl = "intent:" + encodeURIComponent(text) + "#URI;scheme=rawbt;package=ru.a404m.rawbt;end;";
-  window.location.href = intentUrl;
-}
   </script>
 </body>
 </html>
